@@ -1,0 +1,10 @@
+# dependencies
+node_modules/
+
+# runtime data (SQLite DB, logs) — recreated on start
+data/
+
+# secrets & local config — never commit
+.env
+creds.txt
+.claude/

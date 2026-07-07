@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ABHA Bridge Console</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>ABHA Bridge Console</h1>
+      <span class="badge" id="envBadge">ABDM Sandbox</span>
+    </div>
+    <div class="session" id="sessionPill">session: —</div>
+  </header>
+
+  <nav>
+    <button data-tab="settings" class="active">Settings</button>
+    <button data-tab="session">Gateway Session</button>
+    <button data-tab="bridge">Bridge Setup</button>
+    <button data-tab="abha">ABHA Creation</button>
+    <button data-tab="consent">Consent</button>
+    <button data-tab="health">Health Data</button>
+    <button data-tab="console">API Console</button>
+    <button data-tab="webhooks">Webhook Inbox</button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
+  <main>
+    <!-- SETTINGS -->
+    <section id="settings" class="tab active">
+      <h2>Credentials &amp; Endpoints</h2>
+      <p class="hint">Stored in the local SQLite database (<code>data/abha.db</code>). The client secret is write-only — it is never sent back to the browser.</p>
+      <div class="grid">
+        <label>Client ID (Bridge ID)<input id="clientId" placeholder="SBXID_XXXXXX" /></label>
+        <label>Client Secret<input id="clientSecret" type="password" placeholder="leave blank to keep current" /><small id="secretState"></small></label>
+        <label>Gateway Base URL<input id="gatewayBase" placeholder="https://dev.abdm.gov.in/gateway" /></label>
+        <label>Session Path<input id="sessionPath" placeholder="/v1/sessions" /></label>
+        <label>X-CM-ID<input id="xCmId" placeholder="sbx" /></label>
+        <label>Your Bridge URL (public HTTPS)<input id="bridgeUrl" placeholder="https://your-tunnel.ngrok.app" /></label>
+      </div>
+      <button class="primary" id="saveConfig">Save settings</button>
+      <span class="inline-status" id="cfgStatus"></span>
+    </section>
+
+    <!-- SESSION -->
+    <section id="session" class="tab">
+      <h2>Gateway Session Token</h2>
+      <p class="hint">Exchanges your Client ID + Secret at <code id="sessEp">/v1/sessions</code> for a bearer token, persisted and auto-attached to every gateway call.</p>
+      <button class="primary" id="getSession">Fetch session token</button>
+      <div id="sessionInfo" class="card muted">No session yet.</div>
+    </section>
+
+    <!-- BRIDGE -->
+    <section id="bridge" class="tab">
+      <h2>1 · Set Bridge URL</h2>
+      <p class="hint">PATCH <code>/v1/bridges</code> — tells ABDM where to call your HIP/HIU webhooks.</p>
+      <div class="row">
+        <input id="patchUrl" placeholder="https://your-tunnel.ngrok.app" />
+        <button id="patchBtn">PATCH bridge URL</button>
+      </div>
+
+      <h2>2 · Add / Update Service</h2>
+      <p class="hint">POST <code>/v1/bridges/addUpdateServices</code>. The Service ID is <b>self-assigned</b> (not fetched from ABDM) — convention is your Client/Bridge ID + a suffix, e.g. <code>SBXID_XXXXXX-001</code>. It must be unique within your bridge and becomes your <code>hip.id</code> / <code>hiu.id</code> in later flows. Name is a human label.</p>
+      <div class="grid">
+        <label>Service ID<input id="svcId" placeholder="SBXID_XXXXXX-001" /></label>
+        <label>Name<input id="svcName" placeholder="BRIDGE-TEST-HIP" /></label>
+        <label>Type
+          <select id="svcType">
+            <option>HIP</option><option>HIU</option><option>HEALTH_LOCKER</option><option>PHR</option>
+          </select>
+        </label>
+        <label>Endpoint address<input id="svcEndpoint" placeholder="https://your-tunnel.ngrok.app/webhook/registration" /></label>
+        <label>Endpoint use<input id="svcUse" placeholder="registration" value="registration" /></label>
+        <label class="check"><input type="checkbox" id="svcActive" checked /> Active</label>
+      </div>
+      <button id="addSvcBtn">Add / update service</button>
+      <button id="getSvcBtn" class="ghost">Refresh services</button>
+      <div id="svcResult" class="card muted">No services loaded.</div>
+    </section>
+
+    <!-- ABHA CREATION -->
+    <section id="abha" class="tab">
+      <h2>Create ABHA via Aadhaar OTP</h2>
+      <p class="hint">The Aadhaar number and OTP are RSA-encrypted (OAEP/SHA-1) with ABDM's public certificate before leaving this server — plaintext is never stored or logged. Use a <b>sandbox test Aadhaar</b>; a real OTP is delivered to its linked mobile.</p>
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <label>Aadhaar number (12 digits)<input id="aadhaar" inputmode="numeric" placeholder="999999990019" /></label>
+          <button class="primary" id="otpBtn">Send OTP</button>
+          <span class="inline-status" id="otpStatus"></span>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="grid">
+            <label>Transaction ID<input id="txnId" placeholder="filled after step 1" readonly /></label>
+            <label>OTP<input id="otp" inputmode="numeric" placeholder="6-digit OTP" /></label>
+            <label>Mobile (optional, for ABHA)<input id="enrolMobile" inputmode="numeric" placeholder="9xxxxxxxxx" /></label>
+          </div>
+          <button class="primary" id="enrolBtn">Verify &amp; create ABHA</button>
+        </div>
+      </div>
+
+      <div id="abhaResult" class="card muted">No enrolment yet.</div>
+
+      <h2 class="section-gap">Login — existing ABHA user</h2>
+      <p class="hint">Already have an ABHA? Log in with your linked mobile, ABHA number, or Aadhaar. An OTP goes to the mobile/Aadhaar registered with that ABHA and is RSA-encrypted before sending, exactly like enrolment.</p>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="grid">
+            <label>Login using
+              <select id="loginMethod">
+                <option value="mobile">Mobile</option>
+                <option value="abha-number">ABHA number</option>
+                <option value="aadhaar">Aadhaar</option>
+              </select>
+            </label>
+            <label>Identifier<input id="loginId" placeholder="10-digit mobile" /></label>
+          </div>
+          <button class="primary" id="loginOtpBtn">Send login OTP</button>
+          <span class="inline-status" id="loginOtpStatus"></span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="grid">
+            <label>Transaction ID<input id="loginTxnId" placeholder="filled after step 1" readonly /></label>
+            <label>OTP<input id="loginOtp" inputmode="numeric" placeholder="6-digit OTP" /></label>
+          </div>
+          <button class="primary" id="loginVerifyBtn">Verify &amp; login</button>
+        </div>
+      </div>
+      <div id="loginResult" class="card muted">Not logged in yet.</div>
+
+      <h2 class="section-gap">Created &amp; linked ABHA profiles</h2>
+      <button id="refreshAbha" class="ghost">Refresh</button>
+      <div id="abhaList" class="loglist"></div>
+    </section>
+
+    <!-- CONSENT -->
+    <section id="consent" class="tab">
+      <h2>HIU · Initiate Consent Request</h2>
+      <p class="hint">POST <code>/v0.5/consent-requests/init</code>. ABDM replies asynchronously to your bridge; those callbacks appear below and are auto-acknowledged.</p>
+      <div class="grid">
+        <label>Patient ABHA address<input id="cPatient" placeholder="name@sbx" /></label>
+        <label>HIU ID<input id="cHiu" placeholder="defaults to your client ID" /></label>
+        <label>Requester name<input id="cReqName" placeholder="Dr. Demo" /></label>
+        <label>Purpose code<input id="cPurpose" placeholder="CAREMGT" value="CAREMGT" /></label>
+        <label>HI Types (comma-sep)<input id="cHiTypes" placeholder="OPConsultation,Prescription" value="OPConsultation,Prescription" /></label>
+        <label>Access mode
+          <select id="cAccess"><option>VIEW</option><option>STORE</option><option>QUERY</option><option>STREAM</option></select>
+        </label>
+      </div>
+      <button class="primary" id="consentInitBtn">Initiate consent request</button>
+      <div id="consentResult" class="card muted">No request sent yet.</div>
+
+      <h2>Consent Callbacks (HIP &amp; HIU)</h2>
+      <p class="hint">Notifications ABDM's Consent Manager pushed to your bridge. Each is classified, persisted, and auto-acknowledged via the matching <code>on-notify</code> endpoint.</p>
+      <label class="check"><input type="checkbox" id="autoAckToggle" checked /> Auto-acknowledge incoming consent notifications</label>
+      <button id="refreshConsent" class="ghost">Refresh</button>
+      <div id="consentList" class="loglist"></div>
+    </section>
+
+    <!-- HEALTH DATA -->
+    <section id="health" class="tab">
+      <h2>HIU · Fetch Health Data</h2>
+      <p class="hint">M3 flow. For a <b>granted</b> consent, requests health information via
+        <code>/v0.5/health-information/cm/request</code>. This server generates ephemeral X25519 key
+        material; the HIP pushes AES-256-GCM encrypted FHIR bundles to your <code>dataPushUrl</code>
+        (<code>&lt;bridgeUrl&gt;/hi/transfer</code>), which are decrypted and stored below.</p>
+      <div class="grid">
+        <label>Consent ID (granted artefact)<input id="hConsent" placeholder="consent artefact id" /></label>
+        <label>From<input id="hFrom" type="datetime-local" /></label>
+        <label>To<input id="hTo" type="datetime-local" /></label>
+      </div>
+      <button class="primary" id="hReqBtn">Request health data</button>
+      <div id="hResult" class="card muted">No request sent yet.</div>
+
+      <h2>Requests</h2>
+      <button id="refreshHReq" class="ghost">Refresh</button>
+      <div id="hReqList" class="loglist"></div>
+
+      <h2>Received Bundles (decrypted)</h2>
+      <button id="refreshHData" class="ghost">Refresh</button>
+      <div id="hDataList" class="loglist"></div>
+    </section>
+
+    <!-- CONSOLE -->
+    <section id="console" class="tab">
+      <h2>API Console</h2>
+      <p class="hint">Fire any authenticated ABDM call. Path is relative to the gateway base (or paste a full URL).</p>
+      <div class="row">
+        <select id="callMethod"><option>GET</option><option>POST</option><option>PATCH</option><option>PUT</option><option>DELETE</option></select>
+        <input id="callPath" placeholder="/v1/bridges/getServices" style="flex:1" />
+        <button class="primary" id="callBtn">Send</button>
+      </div>
+      <label class="check"><input type="checkbox" id="callAuth" checked /> Attach bearer token</label>
+      <label class="check"><input type="checkbox" id="callStd" checked /> Attach REQUEST-ID / TIMESTAMP / X-CM-ID</label>
+      <textarea id="callBody" placeholder='Request body (JSON) — optional' rows="6"></textarea>
+      <div id="callResult" class="card muted">No response yet.</div>
+    </section>
+
+    <!-- WEBHOOKS -->
+    <section id="webhooks" class="tab">
+      <h2>Webhook Inbox</h2>
+      <p class="hint">Async callbacks ABDM sends to <code>/webhook/*</code> on your bridge. Expose this app via a tunnel and point your bridge URL at it.</p>
+      <button id="refreshHooks" class="ghost">Refresh</button>
+      <div id="hookList" class="loglist"></div>
+    </section>
+
+    <!-- LOGS -->
+    <section id="logs" class="tab">
+      <h2>Request Log</h2>
+      <p class="hint">Every outbound call and inbound webhook, newest first.</p>
+      <button id="refreshLogs" class="ghost">Refresh</button>
+      <div id="logList" class="loglist"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
